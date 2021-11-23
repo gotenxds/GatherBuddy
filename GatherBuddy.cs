@@ -1,7 +1,10 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
+using System.Timers;
 using Dalamud;
 using Dalamud.Game.Command;
 using Dalamud.Logging;
@@ -18,6 +21,10 @@ namespace GatherBuddy
 {
     public class GatherBuddy : IDalamudPlugin
     {
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        static extern bool PostMessage(IntPtr hWnd, UInt32 Msg, int wParam, int lParam);
+
         public string Name
             => "GatherBuddy";
 
@@ -28,6 +35,8 @@ namespace GatherBuddy
         public readonly  AlarmManager Alarms;
         private readonly Interface    _gatherInterface;
         private readonly FishingTimer _fishingTimer;
+        private readonly static Random rnd = new Random();
+        private readonly Timer _antiAfkTimer;
 
 
         public static string Version = string.Empty;
@@ -44,6 +53,10 @@ namespace GatherBuddy
             Alarms           = Gatherer.Alarms;
             _gatherInterface = new Interface(this);
             _fishingTimer    = new FishingTimer(Gatherer!.FishManager, Gatherer!.WeatherManager);
+            _antiAfkTimer = new Timer();
+            _antiAfkTimer.Elapsed += new ElapsedEventHandler(ChangeTimerInterval);
+            _antiAfkTimer.Interval = 10;
+            _antiAfkTimer.Enabled = true;
 
             if (!FishManager.GetSaveFileName().Exists)
                 Gatherer!.FishManager.SaveFishRecords();
@@ -399,6 +412,36 @@ namespace GatherBuddy
                 Gatherer!.PurgeRecord(id);
             else
                 Gatherer!.PurgeRecords(string.Join(" ", argumentParts.Skip(1)));
+        }
+
+        private async static Task MoveScreen() {
+            var key = (new int[] { 0x25, 0x27 })[rnd.Next(0,2)];
+            var timeToMove = rnd.Next(1000 * 60 * 3, 1500 * 60 * 7);
+            Process[] processes = Process.GetProcessesByName("ffxiv_dx11");
+            PostMessage(processes[0].MainWindowHandle, 0x0100, key, 0);
+
+            await Task.Delay(500);
+            
+            PostMessage(processes[0].MainWindowHandle, 0x0101, key, 0);
+        }
+
+        private async void ChangeTimerInterval(Object source, ElapsedEventArgs e)
+        {
+            var timer = source as Timer;
+
+            timer.Interval = rnd.Next(1000 * 60, 1500 * 60);
+
+            if (GatherBuddy.Config.AntiAFK)
+            {
+                timer.Enabled = false;
+                // PluginLog.Verbose("AntiAFK process");
+                await MoveScreen();
+
+                timer.Enabled = true;
+            }
+            else {
+                //PluginLog.Verbose("AntiAFK process - OFF");
+            }
         }
     }
 }

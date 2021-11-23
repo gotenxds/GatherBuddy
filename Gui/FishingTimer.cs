@@ -14,27 +14,35 @@ using ImGuiNET;
 using ImGuiScene;
 using DateTime = System.DateTime;
 using FishingSpot = GatherBuddy.Game.FishingSpot;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using GatherBuddy.Classes.AutoFishers;
 
 namespace GatherBuddy.Gui
 {
     public class FishingTimer : IDisposable
     {
-        private const    float   MaxTimerSeconds  = FishRecord.MaxTime;
+        private const float MaxTimerSeconds = FishRecord.MaxTime;
         private readonly Vector2 _buttonTextAlign = new(0f, 0.1f);
-        private readonly Vector2 _itemSpacing     = new(0, 1);
-
-        private readonly FishManager    _fish;
+        private readonly Vector2 _itemSpacing = new(0, 1);
+        private readonly FishManager _fish;
         private readonly WeatherManager _weather;
-        private readonly CurrentBait    _bait;
-        private readonly FishingParser  _parser;
-        private readonly Cache.Icons    _icons;
-        private readonly EventFramework _eventFramework;
+        private readonly CurrentBait _bait;
+        private readonly FishingParser _parser;
+        private readonly Cache.Icons _icons;
+        private readonly EventFramework _eventFramework;        
+        private readonly Dictionary<AutoFishingMode, AutoFisher> autoFishers = new Dictionary<AutoFishingMode, AutoFisher>() {
+            { AutoFishingMode.None, new DefaultAutoFisher() },
+            { AutoFishingMode.LittleThalaos, new LittleThalaosFisher() }
+        }; 
 
         private static bool Visible
             => GatherBuddy.Config.ShowFishTimer;
 
         private static bool EditMode
             => GatherBuddy.Config.FishTimerEdit;
+
+        private static AutoFishingMode AFisherMode => (AutoFishingMode)GatherBuddy.Config.AutoFishingMode;
 
         private          bool         _snagging;
         private          bool         _chum;
@@ -51,6 +59,7 @@ namespace GatherBuddy.Gui
         private Vector2     _iconSize;
         private float       _lineHeight;
         private FishCache[] _currentFishList = new FishCache[0];
+        private AutoFisher _currentAutoFisher;
 
         private readonly struct FishCache
         {
@@ -219,6 +228,7 @@ namespace GatherBuddy.Gui
 
         private void OnBeganFishing(FishingSpot? spot)
         {
+            _currentAutoFisher = autoFishers[AFisherMode];
             _currentSpot = spot;
             _currentBait = GetCurrentBait(_bait.Current);
             CheckBuffs();
@@ -260,6 +270,8 @@ namespace GatherBuddy.Gui
                 _currentBait.Name, _snagging ? "with Snagging" : "without Snagging",
                 _chum ? "with Chum" : "without Chum");
             _catchHandled = true;
+
+            _currentAutoFisher.OnCatch();
         }
 
         private void OnMooch()
@@ -271,16 +283,20 @@ namespace GatherBuddy.Gui
                 _currentSpot!.PlaceName ?? "Unknown", _snagging ? "with Snagging" : "without Snagging", _chum ? "with Chum" : "without Chum");
             _start.Restart();
             _catchHandled = false;
+
+            AutoFisher.IsMooching = true;
         }
 
         public FishingTimer(FishManager fish, WeatherManager weather)
         {
+            _currentAutoFisher = autoFishers[AFisherMode];
             _fish           = fish;
             _weather        = weather;
             _bait           = new CurrentBait(Dalamud.SigScanner);
             _parser         = new FishingParser(_fish);
             _icons          = Service<Cache.Icons>.Get();
             _eventFramework = new EventFramework(Dalamud.SigScanner);
+            AutoFisher.Timer = _start;
 
             Dalamud.PluginInterface.UiBuilder.Draw += Draw;
             _parser.BeganFishing                   += OnBeganFishing;
@@ -353,8 +369,10 @@ namespace GatherBuddy.Gui
 
             if (_eventFramework.FishingState == FishingState.Bite)
             {
-                if (_start.IsRunning)
+                if (_start.IsRunning) {
+                    _currentAutoFisher.OnBite();
                     PluginLog.Verbose("Fish bit after {Milliseconds} milliseconds.", _start.ElapsedMilliseconds);
+                }
                 _start.Stop();
             }
 
@@ -365,6 +383,10 @@ namespace GatherBuddy.Gui
                 _currentFishList = Array.Empty<FishCache>();
                 if (!EditMode)
                     return;
+            }
+
+            if (fishing) {
+                _currentAutoFisher.OnFishing();
             }
 
             var diff    = _start.ElapsedMilliseconds;

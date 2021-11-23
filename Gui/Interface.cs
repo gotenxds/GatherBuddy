@@ -148,6 +148,12 @@ namespace GatherBuddy.Gui
                 DrawSettingsTab();
                 raii.End();
             }
+
+            if (raii.BeginTabItem("Auto fisher"))
+            {
+                DrawAutoFisherTab();
+                raii.End();
+            }
         }
     }
 }

@@ -97,6 +97,9 @@ namespace GatherBuddy
         public bool ShowSpearFish     { get; set; } = true;
         public bool ShowAlwaysUp      { get; set; } = true;
         public byte ShowFishFromPatch { get; set; } = 0;
+        public bool AutoFish { get; set; } = false;
+        public bool AntiAFK { get; set; } = false;
+        public byte AutoFishingMode { get; set; } = 0;
 
         public Vector4 AvailableFishColor          { get; set; } = Colors.FishTab.UptimeRunning;
         public Vector4 UpcomingFishColor           { get; set; } = Colors.FishTab.UptimeUpcoming;
